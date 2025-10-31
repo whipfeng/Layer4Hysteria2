@@ -75,21 +75,25 @@ static void callConnectResp(JavaVM* jvm, jobject obj, const char* errmsg, const 
 import "C"
 import (
 	"fmt"
+	"net"
+	"strconv"
 	"time"
 	"unsafe"
 
 	"github.com/apernet/hysteria/app/v2/cmd"
 	"github.com/apernet/hysteria/core/v2/client"
-	"go.uber.org/zap"
 )
 
 var gJvm *C.JavaVM
-var logger *zap.Logger
+var hyPool *HYPool
 
 //export JNI_OnLoad
 func JNI_OnLoad(vm *C.JavaVM, reserved unsafe.Pointer) C.jint {
 	fmt.Println("JNI_OnLoad")
 	gJvm = vm
+	hyPool = &HYPool{
+		clients: make(map[string]*RefClient),
+	}
 	return C.JNI_VERSION_1_6
 }
 
@@ -97,27 +101,55 @@ func JNI_OnLoad(vm *C.JavaVM, reserved unsafe.Pointer) C.jint {
 func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_connectReq(env *C.JNIEnv, obj C.jobject,
 	dhost C.jstring, dport C.jint,
 	server C.jstring, password C.jstring, port C.jint, skipcertverify C.jboolean, sni C.jstring, udp C.jboolean) {
-	gdhost := java2gostr(env, dhost)
-	gserver := java2gostr(env, server)
-	gpassword := java2gostr(env, password)
-	gsni := java2gostr(env, sni)
+	gdhost := JString2Go(env, dhost)
+	gserver := JString2Go(env, server)
+	gpassword := JString2Go(env, password)
+	gsni := JString2Go(env, sni)
 	fmt.Println("connectReq begin", gdhost, dport, gserver, gpassword, port, skipcertverify, gsni, udp)
 	gobj := C.NewGlobalRef(env, obj)
 	go func() {
+
+		hyaddr := net.JoinHostPort(gserver, strconv.Itoa(int(port)))
 		fmt.Println("connectResp begin", gdhost, dport)
 
-		hyclient, err := client.NewReconnectableClient(
-			func() (*client.Config, error) {
-				hyConfig := &client.Config{}
-				return hyConfig, nil
-			},
-			func(c client.Client, info *client.HandshakeInfo, count int) {
-				connectLog(info, count)
-			}, false)
+		hyc, err := hyPool.GetClient(hyaddr, func() (*client.Config, error) {
+			hyConfig := &client.Config{}
+			hostPort := net.JoinHostPort(gserver, strconv.Itoa(int(port)))
+			addr, err := net.ResolveUDPAddr("udp", hostPort)
+			if err != nil {
+				return nil, err
+			}
+			hyConfig.ServerAddr = addr
+			if gsni == "" {
+				hyConfig.TLSConfig.ServerName = gserver
+			} else {
+				hyConfig.TLSConfig.ServerName = gsni
+			}
+			hyConfig.ConnFactory = &udpConnFactory{}
+			hyConfig.Auth = gpassword
+			hyConfig.TLSConfig.InsecureSkipVerify = JBoolean2Go(skipcertverify)
+			return hyConfig, nil
+		})
+
 		if err != nil {
-			logger.Fatal("failed to initialize client", zap.Error(err))
+			C.callConnectResp(gJvm, gobj, GString2C(err.Error()), 0)
+			return
 		}
-		defer hyclient.Close()
+		defer func(hyPool *HYPool, addr string) {
+			err := hyPool.ReleaseClient(addr)
+			if err != nil {
+			}
+		}(hyPool, hyaddr)
+
+		dstaddr := net.JoinHostPort(gdhost, strconv.Itoa(int(dport)))
+
+		rConn, err := hyc.TCP(dstaddr)
+		if err != nil {
+			C.callConnectResp(gJvm, gobj, GString2C(err.Error()), 0)
+			return
+		}
+
+		defer rConn.Close()
 
 		time.Sleep(3 * time.Second)
 		fmt.Println("connecting~~~~", gdhost, dport)
@@ -127,18 +159,34 @@ func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_connectReq(e
 	fmt.Println("connectReq end", gdhost, dport)
 }
 
-func java2gostr(env *C.JNIEnv, jstr C.jstring) string {
+func JString2Go(env *C.JNIEnv, jstr C.jstring) string {
 	cstr := C.GetJStringUTF(env, jstr)
+	if cstr == nil {
+		return ""
+	}
+	defer C.ReleaseJStringUTF(env, jstr, cstr)
 	gstr := C.GoString(cstr)
-	C.ReleaseJStringUTF(env, jstr, cstr)
 	return gstr
 }
 
+func JBoolean2Go(b C.jboolean) bool {
+	return b != 0
+}
+
+func GString2C(gstr string) *C.char {
+	cerr := C.CString(gstr)
+	defer C.free(unsafe.Pointer(cerr))
+	return cerr
+}
+
 func connectLog(info *client.HandshakeInfo, count int) {
-	logger.Info("connected to server",
-		zap.Bool("udpEnabled", info.UDPEnabled),
-		zap.Uint64("tx", info.Tx),
-		zap.Int("count", count))
+	fmt.Println("connected to server:", "udpEnabled=", info.UDPEnabled, ",tx=", info.Tx, ",count=", count)
+}
+
+type udpConnFactory struct{}
+
+func (f *udpConnFactory) New(addr net.Addr) (net.PacketConn, error) {
+	return net.ListenUDP("udp", nil)
 }
 
 func main() {
