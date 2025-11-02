@@ -81,6 +81,11 @@ static void CallResp(JNIEnv* env, jobject obj, const char* name, jstring errmsg)
     (*env)->CallVoidMethod(env, obj, mid, errmsg);
 }
 
+static void CallReadResp(JNIEnv* env, jobject obj, jstring errmsg, jint len) {
+    jmethodID mid = GetMethodID(env, obj, "readResp", "(Ljava/lang/String;I)V");
+    (*env)->CallVoidMethod(env, obj, mid, errmsg, len);
+}
+
 */
 import "C"
 import (
@@ -150,16 +155,53 @@ func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_connectReq(e
 	fmt.Println("connectReq end", gdhost, dport, gserver, gpassword, port, skipcertverify, gsni, udp)
 }
 
+//export Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_readReq
+func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_readReq(env *C.JNIEnv, obj C.jobject,
+	addr C.jlong, len C.jint) {
+	jhd := C.GetConnectionID(env, obj)
+	hd := int64(jhd)
+	glen := int(len)
+	fmt.Println("readReq begin", hd)
+	JNIEnvGoFunc(env, obj, func(genv *C.JNIEnv, gobj C.jobject) {
+		fmt.Println("reading begin", hd)
+		buf := unsafe.Slice((*byte)(unsafe.Pointer(uintptr(addr))), glen)
+		conn, err := hyPool.GetConn(hd)
+		if err == nil {
+			glen, err = conn.Read(buf)
+		}
+		fmt.Println("reading end", hd, glen, err)
+		fmt.Println("readResp begin", hd)
+		CallSelfResp(genv, gobj, err,
+			func(env *C.JNIEnv, obj C.jobject, jemsg C.jstring) {
+				C.CallReadResp(env, obj, jemsg, C.jint(glen))
+			})
+		fmt.Println("readResp end", hd)
+	})
+	fmt.Println("readReq end", hd)
+}
+
 //export Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_writeReq
 func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_writeReq(env *C.JNIEnv, obj C.jobject,
 	addr C.jlong, len C.jint) {
 	jhd := C.GetConnectionID(env, obj)
 	hd := int64(jhd)
-	fmt.Println("writeReq begin", hd)
+	glen := int(len)
+	fmt.Println("writeReq begin", hd, glen)
 	JNIEnvGoFunc(env, obj, func(genv *C.JNIEnv, gobj C.jobject) {
-		fmt.Println("writing begin", hd)
-		err := hyPool.Close(hd)
-		fmt.Println("writing end", hd, err)
+		fmt.Println("writing begin", hd, glen)
+		buf := unsafe.Slice((*byte)(unsafe.Pointer(uintptr(addr))), glen)
+		conn, err := hyPool.GetConn(hd)
+		if err == nil {
+			wlen, werr := conn.Write(buf)
+			if werr == nil {
+				if wlen != glen {
+					err = fmt.Errorf("short write! %d", hd)
+				}
+			} else {
+				err = werr
+			}
+		}
+		fmt.Println("writing end", hd, glen, err)
 		fmt.Println("writeResp begin", hd)
 		CallResp(genv, gobj, "writeResp", err)
 		fmt.Println("writeResp end", hd)
@@ -195,17 +237,26 @@ func JNIEnvGoFunc(env *C.JNIEnv, obj C.jobject, fn func(genv *C.JNIEnv, gobj C.j
 }
 
 func CallResp(env *C.JNIEnv, obj C.jobject, name string, emsg error) {
-	cname := C.CString(name)
-	defer C.free(unsafe.Pointer(cname))
+	CallSelfResp(env, obj, emsg,
+		func(env *C.JNIEnv, obj C.jobject, jemsg C.jstring) {
+			cname := C.CString(name)
+			defer C.free(unsafe.Pointer(cname))
+			C.CallResp(env, obj, cname, jemsg)
+		})
+}
+
+func CallSelfResp(env *C.JNIEnv, obj C.jobject, emsg error,
+	fn func(env *C.JNIEnv, obj C.jobject, jemsg C.jstring)) {
+
 	if emsg == nil {
-		C.CallResp(env, obj, cname, C.GetJMSGRef(env, nil))
+		fn(env, obj, C.GetJMSGRef(env, nil))
 		return
 	}
 	cemsg := C.CString(emsg.Error())
 	defer C.free(unsafe.Pointer(cemsg))
 	jemsg := C.GetJMSGRef(env, cemsg)
 	defer C.DelJMSGRef(env, jemsg)
-	C.CallResp(env, obj, cname, jemsg)
+	fn(env, obj, jemsg)
 }
 
 func G2JString(env *C.JNIEnv, gstr string, fn func(C.jstring)) {

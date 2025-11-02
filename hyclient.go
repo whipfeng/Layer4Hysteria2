@@ -52,6 +52,16 @@ func (pool *HYPool) TCP(addr string, configFunc func() (*client.Config, error), 
 	return pool.hdCnt, nil
 }
 
+func (pool *HYPool) GetConn(hd int64) (net.Conn, error) {
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+	if handler, ok := pool.hds[hd]; ok {
+		return handler.conn, nil
+	}
+	fmt.Println("Should Not here", hd)
+	return nil, fmt.Errorf("hd not found! %d", hd)
+}
+
 func (pool *HYPool) Close(hd int64) error {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()

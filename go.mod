@@ -1,13 +1,15 @@
 module Layer4Hysteria2
 
-go 1.25
+go 1.23
 
-require github.com/apernet/hysteria/app/v2 v2.6.5
+require (
+	github.com/apernet/hysteria/app/v2 v2.6.5
+	github.com/apernet/hysteria/core/v2 v2.6.5
+)
 
 require (
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/apernet/go-tproxy v0.0.0-20230809025308-8f4723fd742f // indirect
-	github.com/apernet/hysteria/core/v2 v2.6.5 // indirect
 	github.com/apernet/hysteria/extras/v2 v2.6.5 // indirect
 	github.com/apernet/quic-go v0.54.1-0.20251024023933-5e0818a71079 // indirect
 	github.com/apernet/sing-tun v0.2.6-0.20250920121535-299f04629986 // indirect

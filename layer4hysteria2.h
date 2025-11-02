@@ -101,6 +101,11 @@ static void CallResp(JNIEnv* env, jobject obj, const char* name, jstring errmsg)
     (*env)->CallVoidMethod(env, obj, mid, errmsg);
 }
 
+static void CallReadResp(JNIEnv* env, jobject obj, jstring errmsg, jint len) {
+    jmethodID mid = GetMethodID(env, obj, "readResp", "(Ljava/lang/String;I)V");
+    (*env)->CallVoidMethod(env, obj, mid, errmsg, len);
+}
+
 
 #line 1 "cgo-generated-wrapper"
 
@@ -160,6 +165,7 @@ extern "C" {
 
 extern __declspec(dllexport) jint JNI_OnLoad(JavaVM* vm, void* reserved);
 extern __declspec(dllexport) void Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_connectReq(JNIEnv* env, jobject obj, jstring dhost, jint dport, jstring server, jstring password, jint port, jboolean skipcertverify, jstring sni, jboolean udp);
+extern __declspec(dllexport) void Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_readReq(JNIEnv* env, jobject obj, jlong addr, jint len);
 extern __declspec(dllexport) void Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_writeReq(JNIEnv* env, jobject obj, jlong addr, jint len);
 extern __declspec(dllexport) void Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_closeReq(JNIEnv* env, jobject obj);
 
