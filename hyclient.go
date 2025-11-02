@@ -5,31 +5,39 @@ import (
 	"net"
 	"sync"
 
+	"github.com/apernet/hysteria/app/v2/cmd"
 	"github.com/apernet/hysteria/core/v2/client"
 )
 
-type RefClient struct {
+type refClient struct {
 	client client.Client
 	refCnt int
 }
-type HYHandle struct {
+type handle struct {
 	conn net.Conn
 	addr string
 }
 
 type HYPool struct {
-	clients map[string]*RefClient
+	clients map[string]*refClient
 	mu      sync.Mutex
 
-	hds   map[int64]*HYHandle
+	hds   map[int64]*handle
 	hdCnt int64
+}
+
+func NewHYPool() *HYPool {
+	return &HYPool{
+		clients: make(map[string]*refClient),
+		hds:     make(map[int64]*handle),
+	}
 }
 
 func (pool *HYPool) TCP(addr string, configFunc func() (*client.Config, error), dstAddr string) (int64, error) {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
 
-	refc, err := pool.GetClient(addr, configFunc)
+	refc, err := pool.getClient(addr, configFunc)
 	if err != nil {
 		return 0, err
 	}
@@ -40,7 +48,7 @@ func (pool *HYPool) TCP(addr string, configFunc func() (*client.Config, error), 
 		return 0, err
 	}
 	pool.hdCnt++
-	pool.hds[pool.hdCnt] = &HYHandle{conn: rConn, addr: addr}
+	pool.hds[pool.hdCnt] = &handle{conn: rConn, addr: addr}
 	return pool.hdCnt, nil
 }
 
@@ -50,7 +58,7 @@ func (pool *HYPool) Close(hd int64) error {
 
 	if handler, ok := pool.hds[hd]; ok {
 		defer func(pool *HYPool, addr string) {
-			err := pool.ReleaseClient(addr)
+			err := pool.releaseClient(addr)
 			if err != nil {
 				fmt.Println("Release error", handler.addr, err)
 			}
@@ -67,7 +75,7 @@ func (pool *HYPool) Close(hd int64) error {
 	return fmt.Errorf("hd not found! %d", hd)
 }
 
-func (pool *HYPool) GetClient(addr string, configFunc func() (*client.Config, error)) (*RefClient, error) {
+func (pool *HYPool) getClient(addr string, configFunc func() (*client.Config, error)) (*refClient, error) {
 
 	if refc, ok := pool.clients[addr]; ok {
 		refc.refCnt++
@@ -76,10 +84,10 @@ func (pool *HYPool) GetClient(addr string, configFunc func() (*client.Config, er
 	}
 
 	// 否则新建一个底层连接
-	return pool.NewClient(addr, configFunc)
+	return pool.newClient(addr, configFunc)
 }
 
-func (pool *HYPool) NewClient(addr string, configFunc func() (*client.Config, error)) (*RefClient, error) {
+func (pool *HYPool) newClient(addr string, configFunc func() (*client.Config, error)) (*refClient, error) {
 	hyc, err := client.NewReconnectableClient(configFunc,
 		func(c client.Client, info *client.HandshakeInfo, count int) {
 			connectLog(info, count)
@@ -90,13 +98,13 @@ func (pool *HYPool) NewClient(addr string, configFunc func() (*client.Config, er
 	}
 	fmt.Println("NewClient OK", addr)
 
-	refc := &RefClient{client: hyc, refCnt: 1}
+	refc := &refClient{client: hyc, refCnt: 1}
 
 	pool.clients[addr] = refc
 	return refc, err
 }
 
-func (pool *HYPool) ReleaseClient(addr string) error {
+func (pool *HYPool) releaseClient(addr string) error {
 	if refc, ok := pool.clients[addr]; ok {
 		refc.refCnt--
 
@@ -112,4 +120,19 @@ func (pool *HYPool) ReleaseClient(addr string) error {
 	}
 	fmt.Println("ReleaseClient OK", addr)
 	return nil
+}
+
+func connectLog(info *client.HandshakeInfo, count int) {
+	fmt.Println("connected to server:", "udpEnabled=", info.UDPEnabled, ",tx=", info.Tx, ",count=", count)
+}
+
+type udpConnFactory struct{}
+
+func (f *udpConnFactory) New(addr net.Addr) (net.PacketConn, error) {
+	return net.ListenUDP("udp", nil)
+}
+
+func main() {
+	//C.callConnectResp(gJvm, C.jobject(C.NULL), nil, 111) //
+	cmd.Execute()
 }

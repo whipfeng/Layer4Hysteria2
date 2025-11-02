@@ -3,6 +3,8 @@ package main
 /*
 #cgo CFLAGS: -I/Users/cmll/Library/Java/JavaVirtualMachines/corretto-1.8.0_462-1/Contents/Home/include
 #cgo CFLAGS: -I/Users/cmll/Library/Java/JavaVirtualMachines/corretto-1.8.0_462-1/Contents/Home/include/darwin
+#cgo CFLAGS: -IC:/Users/AI/.jdks/corretto-1.8.0_462/include
+#cgo CFLAGS: -IC:/Users/AI/.jdks/corretto-1.8.0_462/include/win32
 #cgo CFLAGS: -I../Layer4forwarding/layer4-common/target/generated-jni-headers
 #cgo darwin LDFLAGS: -framework Security -framework CoreFoundation
 #include <stdio.h>
@@ -43,32 +45,40 @@ static jmethodID GetMethodID(JNIEnv* env, jobject obj, const char *name, const c
     return mid;
 }
 
-static jstring GetJMsg(JNIEnv* env, const char* errmsg) {
+static jfieldID GetfieldID(JNIEnv* env, jobject obj, const char *name, const char *sig) {
+    jclass cls = (*env)->GetObjectClass(env, obj);
+    jfieldID fid = (*env)->GetFieldID(env, cls, name, sig);
+    return fid;
+}
+
+static jstring GetJMSGRef(JNIEnv* env, const char* msg) {
     jstring jmsg = NULL;
-    if (errmsg != NULL) {
-        jmsg = (*env)->NewStringUTF(env, errmsg);
+    if (msg != NULL) {
+        jmsg = (*env)->NewStringUTF(env, msg);
     }
     return jmsg;
 }
 
-static void ReleaseObjs(JNIEnv* env, jobject obj, jstring jmsg) {
+static void DelJMSGRef(JNIEnv* env, jstring jmsg) {
     if (jmsg != NULL) {
         (*env)->DeleteLocalRef(env, jmsg);
     }
-    DeleteGlobalRef(env, obj);
 }
 
-static void callConnectResp(JavaVM* jvm, jobject obj, const char* errmsg, const long connectionId) {
-    fprintf(stderr,"callConnectResp debug1\n");
-    JNIEnv* env = GetJNIEnv(jvm);
-    fprintf(stderr,"callConnectResp debug2\n");
-    jstring jmsg = GetJMsg(env, errmsg);
-    fprintf(stderr,"callConnectResp debug3\n");
-    jmethodID mid = GetMethodID(env, obj, "connectResp", "(Ljava/lang/String;J)V");
-    fprintf(stderr,"callConnectResp debug4\n");
-    (*env)->CallVoidMethod(env, obj, mid, jmsg, (jlong)connectionId);
-    fprintf(stderr,"callConnectResp debug5\n");
-    ReleaseObjs(env, obj, jmsg);
+static void SetConnectionID(JNIEnv* env, jobject obj, jlong connectionId) {
+    jfieldID fid = GetfieldID(env, obj, "connectionId", "J");
+    (*env)->SetLongField(env, obj, fid, connectionId);
+}
+
+static jlong GetConnectionID(JNIEnv* env, jobject obj) {
+    jfieldID fid = GetfieldID(env, obj, "connectionId", "J");
+    jlong connectionId = (*env)->GetLongField(env, obj, fid);
+    return connectionId;
+}
+
+static void CallResp(JNIEnv* env, jobject obj, const char* name, jstring errmsg) {
+    jmethodID mid = GetMethodID(env, obj, name, "(Ljava/lang/String;)V");
+    (*env)->CallVoidMethod(env, obj, mid, errmsg);
 }
 
 */
@@ -76,24 +86,21 @@ import "C"
 import (
 	"fmt"
 	"net"
+	"runtime"
 	"strconv"
-	"time"
 	"unsafe"
 
-	"github.com/apernet/hysteria/app/v2/cmd"
 	"github.com/apernet/hysteria/core/v2/client"
 )
 
-var gJvm *C.JavaVM
+var gjvm *C.JavaVM
 var hyPool *HYPool
 
 //export JNI_OnLoad
 func JNI_OnLoad(vm *C.JavaVM, reserved unsafe.Pointer) C.jint {
 	fmt.Println("JNI_OnLoad")
-	gJvm = vm
-	hyPool = &HYPool{
-		clients: make(map[string]*RefClient),
-	}
+	gjvm = vm
+	hyPool = NewHYPool()
 	return C.JNI_VERSION_1_6
 }
 
@@ -101,18 +108,19 @@ func JNI_OnLoad(vm *C.JavaVM, reserved unsafe.Pointer) C.jint {
 func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_connectReq(env *C.JNIEnv, obj C.jobject,
 	dhost C.jstring, dport C.jint,
 	server C.jstring, password C.jstring, port C.jint, skipcertverify C.jboolean, sni C.jstring, udp C.jboolean) {
-	gdhost := JString2Go(env, dhost)
-	gserver := JString2Go(env, server)
-	gpassword := JString2Go(env, password)
-	gsni := JString2Go(env, sni)
+	gdhost := J2GString(env, dhost)
+	gserver := J2GString(env, server)
+	gpassword := J2GString(env, password)
+	gsni := J2GString(env, sni)
 	fmt.Println("connectReq begin", gdhost, dport, gserver, gpassword, port, skipcertverify, gsni, udp)
-	gobj := C.NewGlobalRef(env, obj)
-	go func() {
+
+	JNIEnvGoFunc(env, obj, func(genv *C.JNIEnv, gobj C.jobject) {
 
 		hyaddr := net.JoinHostPort(gserver, strconv.Itoa(int(port)))
-		fmt.Println("connectResp begin", gdhost, dport)
+		dstaddr := net.JoinHostPort(gdhost, strconv.Itoa(int(dport)))
+		fmt.Println("connecting begin", hyaddr, dstaddr)
 
-		hyc, err := hyPool.GetClient(hyaddr, func() (*client.Config, error) {
+		hd, err := hyPool.TCP(hyaddr, func() (*client.Config, error) {
 			hyConfig := &client.Config{}
 			hostPort := net.JoinHostPort(gserver, strconv.Itoa(int(port)))
 			addr, err := net.ResolveUDPAddr("udp", hostPort)
@@ -127,39 +135,88 @@ func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_connectReq(e
 			}
 			hyConfig.ConnFactory = &udpConnFactory{}
 			hyConfig.Auth = gpassword
-			hyConfig.TLSConfig.InsecureSkipVerify = JBoolean2Go(skipcertverify)
+			hyConfig.TLSConfig.InsecureSkipVerify = J2GBoolean(skipcertverify)
 			return hyConfig, nil
-		})
+		}, dstaddr)
 
-		if err != nil {
-			C.callConnectResp(gJvm, gobj, GString2C(err.Error()), 0)
-			return
+		if err == nil {
+			C.SetConnectionID(genv, gobj, C.jlong(hd))
 		}
-		defer func(hyPool *HYPool, addr string) {
-			err := hyPool.ReleaseClient(addr)
-			if err != nil {
-			}
-		}(hyPool, hyaddr)
-
-		dstaddr := net.JoinHostPort(gdhost, strconv.Itoa(int(dport)))
-
-		rConn, err := hyc.TCP(dstaddr)
-		if err != nil {
-			C.callConnectResp(gJvm, gobj, GString2C(err.Error()), 0)
-			return
-		}
-
-		defer rConn.Close()
-
-		time.Sleep(3 * time.Second)
-		fmt.Println("connecting~~~~", gdhost, dport)
-		C.callConnectResp(gJvm, gobj, nil, 111)
-		fmt.Println("connectResp end", gdhost, dport)
-	}()
-	fmt.Println("connectReq end", gdhost, dport)
+		fmt.Println("connecting end", hyaddr, dstaddr, hd, err)
+		fmt.Println("connectResp begin", hd)
+		CallResp(genv, gobj, "connectResp", err)
+		fmt.Println("connectResp end", hd)
+	})
+	fmt.Println("connectReq end", gdhost, dport, gserver, gpassword, port, skipcertverify, gsni, udp)
 }
 
-func JString2Go(env *C.JNIEnv, jstr C.jstring) string {
+//export Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_writeReq
+func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_writeReq(env *C.JNIEnv, obj C.jobject,
+	addr C.jlong, len C.jint) {
+	jhd := C.GetConnectionID(env, obj)
+	hd := int64(jhd)
+	fmt.Println("writeReq begin", hd)
+	JNIEnvGoFunc(env, obj, func(genv *C.JNIEnv, gobj C.jobject) {
+		fmt.Println("writing begin", hd)
+		err := hyPool.Close(hd)
+		fmt.Println("writing end", hd, err)
+		fmt.Println("writeResp begin", hd)
+		CallResp(genv, gobj, "writeResp", err)
+		fmt.Println("writeResp end", hd)
+	})
+	fmt.Println("writeReq end", hd)
+}
+
+//export Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_closeReq
+func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_closeReq(env *C.JNIEnv, obj C.jobject) {
+	jhd := C.GetConnectionID(env, obj)
+	hd := int64(jhd)
+	fmt.Println("closeReq begin", hd)
+	JNIEnvGoFunc(env, obj, func(genv *C.JNIEnv, gobj C.jobject) {
+		fmt.Println("closing begin", hd)
+		err := hyPool.Close(hd)
+		fmt.Println("closing end", hd, err)
+		fmt.Println("closeResp begin", hd)
+		CallResp(genv, gobj, "closeResp", err)
+		fmt.Println("closeResp end", hd)
+	})
+	fmt.Println("closeReq end", hd)
+}
+
+func JNIEnvGoFunc(env *C.JNIEnv, obj C.jobject, fn func(genv *C.JNIEnv, gobj C.jobject)) {
+	gobj := C.NewGlobalRef(env, obj)
+	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		genv := C.GetJNIEnv(gjvm)
+		fn(genv, gobj)
+		C.DeleteGlobalRef(genv, gobj)
+	}()
+}
+
+func CallResp(env *C.JNIEnv, obj C.jobject, name string, emsg error) {
+	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
+	if emsg == nil {
+		C.CallResp(env, obj, cname, C.GetJMSGRef(env, nil))
+		return
+	}
+	cemsg := C.CString(emsg.Error())
+	defer C.free(unsafe.Pointer(cemsg))
+	jemsg := C.GetJMSGRef(env, cemsg)
+	defer C.DelJMSGRef(env, jemsg)
+	C.CallResp(env, obj, cname, jemsg)
+}
+
+func G2JString(env *C.JNIEnv, gstr string, fn func(C.jstring)) {
+	cstr := C.CString(gstr)
+	defer C.free(unsafe.Pointer(cstr))
+	jstr := C.GetJMSGRef(env, cstr)
+	defer C.DelJMSGRef(env, jstr)
+	fn(jstr)
+}
+
+func J2GString(env *C.JNIEnv, jstr C.jstring) string {
 	cstr := C.GetJStringUTF(env, jstr)
 	if cstr == nil {
 		return ""
@@ -169,27 +226,6 @@ func JString2Go(env *C.JNIEnv, jstr C.jstring) string {
 	return gstr
 }
 
-func JBoolean2Go(b C.jboolean) bool {
-	return b != 0
-}
-
-func GString2C(gstr string) *C.char {
-	cerr := C.CString(gstr)
-	defer C.free(unsafe.Pointer(cerr))
-	return cerr
-}
-
-func connectLog(info *client.HandshakeInfo, count int) {
-	fmt.Println("connected to server:", "udpEnabled=", info.UDPEnabled, ",tx=", info.Tx, ",count=", count)
-}
-
-type udpConnFactory struct{}
-
-func (f *udpConnFactory) New(addr net.Addr) (net.PacketConn, error) {
-	return net.ListenUDP("udp", nil)
-}
-
-func main() {
-	//C.callConnectResp(gJvm, C.jobject(C.NULL), nil, 111) //
-	cmd.Execute()
+func J2GBoolean(jb C.jboolean) bool {
+	return jb != 0
 }
