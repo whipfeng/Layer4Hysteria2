@@ -27,6 +27,8 @@ extern const char *_GoStringPtr(_GoString_ s);
 
 
 
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <com_net_layer4_common_netty_channel_Hysteria2ProxyChannel.h>
@@ -65,32 +67,45 @@ static jmethodID GetMethodID(JNIEnv* env, jobject obj, const char *name, const c
     return mid;
 }
 
-static jstring GetJMsg(JNIEnv* env, const char* errmsg) {
+static jfieldID GetfieldID(JNIEnv* env, jobject obj, const char *name, const char *sig) {
+    jclass cls = (*env)->GetObjectClass(env, obj);
+    jfieldID fid = (*env)->GetFieldID(env, cls, name, sig);
+    return fid;
+}
+
+static jstring GetJMSGRef(JNIEnv* env, const char* msg) {
     jstring jmsg = NULL;
-    if (errmsg != NULL) {
-        jmsg = (*env)->NewStringUTF(env, errmsg);
+    if (msg != NULL) {
+        jmsg = (*env)->NewStringUTF(env, msg);
     }
     return jmsg;
 }
 
-static void ReleaseObjs(JNIEnv* env, jobject obj, jstring jmsg) {
+static void DelJMSGRef(JNIEnv* env, jstring jmsg) {
     if (jmsg != NULL) {
         (*env)->DeleteLocalRef(env, jmsg);
     }
-    DeleteGlobalRef(env, obj);
 }
 
-static void callConnectResp(JavaVM* jvm, jobject obj, const char* errmsg, const long connectionId) {
-    fprintf(stderr,"callConnectResp debug1\n");
-    JNIEnv* env = GetJNIEnv(jvm);
-    fprintf(stderr,"callConnectResp debug2\n");
-    jstring jmsg = GetJMsg(env, errmsg);
-    fprintf(stderr,"callConnectResp debug3\n");
-    jmethodID mid = GetMethodID(env, obj, "connectResp", "(Ljava/lang/String;J)V");
-    fprintf(stderr,"callConnectResp debug4\n");
-    (*env)->CallVoidMethod(env, obj, mid, jmsg, (jlong)connectionId);
-    fprintf(stderr,"callConnectResp debug5\n");
-    ReleaseObjs(env, obj, jmsg);
+static void SetConnectionID(JNIEnv* env, jobject obj, jlong connectionId) {
+    jfieldID fid = GetfieldID(env, obj, "connectionId", "J");
+    (*env)->SetLongField(env, obj, fid, connectionId);
+}
+
+static jlong GetConnectionID(JNIEnv* env, jobject obj) {
+    jfieldID fid = GetfieldID(env, obj, "connectionId", "J");
+    jlong connectionId = (*env)->GetLongField(env, obj, fid);
+    return connectionId;
+}
+
+static void CallResp(JNIEnv* env, jobject obj, const char* name, jstring errmsg) {
+    jmethodID mid = GetMethodID(env, obj, name, "(Ljava/lang/String;)V");
+    (*env)->CallVoidMethod(env, obj, mid, errmsg);
+}
+
+static void CallReadResp(JNIEnv* env, jobject obj, jstring errmsg, jint len) {
+    jmethodID mid = GetMethodID(env, obj, "readResp", "(Ljava/lang/String;I)V");
+    (*env)->CallVoidMethod(env, obj, mid, errmsg, len);
 }
 
 
@@ -157,7 +172,10 @@ extern "C" {
 #endif
 
 extern jint JNI_OnLoad(JavaVM* vm, void* reserved);
-extern void Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_connectReq(JNIEnv* env, jobject obj, jstring dhost, jint dport, jstring server, jstring password, jint port, jboolean skipcertverify, jstring sni, jboolean udp);
+extern void Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_connectReq(JNIEnv* env, jobject obj, jstring dhost, jint dport, jstring name, jstring server, jstring password, jint port, jboolean skipcertverify, jstring sni, jboolean udp);
+extern void Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_readReq(JNIEnv* env, jobject obj, jlong addr, jint len);
+extern void Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_writeReq(JNIEnv* env, jobject obj, jlong addr, jint len);
+extern void Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_closeReq(JNIEnv* env, jobject obj);
 
 #ifdef __cplusplus
 }

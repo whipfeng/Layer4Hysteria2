@@ -15,7 +15,7 @@ type refClient struct {
 }
 type handle struct {
 	conn net.Conn
-	addr string
+	name string
 }
 
 type HYPool struct {
@@ -33,22 +33,22 @@ func NewHYPool() *HYPool {
 	}
 }
 
-func (pool *HYPool) TCP(addr string, configFunc func() (*client.Config, error), dstAddr string) (int64, error) {
+func (pool *HYPool) TCP(name string, configFunc func() (*client.Config, error), dstAddr string) (int64, error) {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
 
-	refc, err := pool.getClient(addr, configFunc)
+	refc, err := pool.getClient(name, configFunc)
 	if err != nil {
 		return 0, err
 	}
 
 	rConn, err := refc.client.TCP(dstAddr)
-	fmt.Println("TCP ESTALiSH", addr, dstAddr, err)
+	fmt.Println("TCP ESTALiSH", name, dstAddr, err)
 	if err != nil {
 		return 0, err
 	}
 	pool.hdCnt++
-	pool.hds[pool.hdCnt] = &handle{conn: rConn, addr: addr}
+	pool.hds[pool.hdCnt] = &handle{conn: rConn, name: name}
 	return pool.hdCnt, nil
 }
 
@@ -67,16 +67,16 @@ func (pool *HYPool) Close(hd int64) error {
 	defer pool.mu.Unlock()
 
 	if handler, ok := pool.hds[hd]; ok {
-		defer func(pool *HYPool, addr string) {
-			err := pool.releaseClient(addr)
+		defer func(pool *HYPool, name string) {
+			err := pool.releaseClient(name)
 			if err != nil {
-				fmt.Println("Release error", handler.addr, err)
+				fmt.Println("Release error", handler.name, err)
 			}
-		}(pool, handler.addr)
+		}(pool, handler.name)
 		delete(pool.hds, hd)
 		err := handler.conn.Close()
 		if err != nil {
-			fmt.Println("Close error", handler.addr, err)
+			fmt.Println("Close error", handler.name, err)
 			return err
 		}
 		return nil
@@ -85,19 +85,19 @@ func (pool *HYPool) Close(hd int64) error {
 	return fmt.Errorf("hd not found! %d", hd)
 }
 
-func (pool *HYPool) getClient(addr string, configFunc func() (*client.Config, error)) (*refClient, error) {
+func (pool *HYPool) getClient(name string, configFunc func() (*client.Config, error)) (*refClient, error) {
 
-	if refc, ok := pool.clients[addr]; ok {
+	if refc, ok := pool.clients[name]; ok {
 		refc.refCnt++
-		fmt.Println("OldClient GET", addr)
+		fmt.Println("OldClient GET", name)
 		return refc, nil // 复用已有底层连接
 	}
 
 	// 否则新建一个底层连接
-	return pool.newClient(addr, configFunc)
+	return pool.newClient(name, configFunc)
 }
 
-func (pool *HYPool) newClient(addr string, configFunc func() (*client.Config, error)) (*refClient, error) {
+func (pool *HYPool) newClient(name string, configFunc func() (*client.Config, error)) (*refClient, error) {
 	hyc, err := client.NewReconnectableClient(configFunc,
 		func(c client.Client, info *client.HandshakeInfo, count int) {
 			connectLog(info, count)
@@ -106,29 +106,29 @@ func (pool *HYPool) newClient(addr string, configFunc func() (*client.Config, er
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("NewClient OK", addr)
+	fmt.Println("NewClient OK", name)
 
 	refc := &refClient{client: hyc, refCnt: 1}
 
-	pool.clients[addr] = refc
+	pool.clients[name] = refc
 	return refc, err
 }
 
-func (pool *HYPool) releaseClient(addr string) error {
-	if refc, ok := pool.clients[addr]; ok {
+func (pool *HYPool) releaseClient(name string) error {
+	if refc, ok := pool.clients[name]; ok {
 		refc.refCnt--
 
 		if refc.refCnt <= 0 {
-			delete(pool.clients, addr)
-			fmt.Println("DELClient OK", addr)
+			delete(pool.clients, name)
+			fmt.Println("DELClient OK", name)
 			err := refc.client.Close()
-			fmt.Println("CloseClient result", addr, err)
+			fmt.Println("CloseClient result", name, err)
 			if err != nil {
 				return err
 			}
 		}
 	}
-	fmt.Println("ReleaseClient OK", addr)
+	fmt.Println("ReleaseClient OK", name)
 	return nil
 }
 

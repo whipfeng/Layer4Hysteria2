@@ -112,7 +112,10 @@ func JNI_OnLoad(vm *C.JavaVM, reserved unsafe.Pointer) C.jint {
 //export Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_connectReq
 func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_connectReq(env *C.JNIEnv, obj C.jobject,
 	dhost C.jstring, dport C.jint,
-	server C.jstring, password C.jstring, port C.jint, skipcertverify C.jboolean, sni C.jstring, udp C.jboolean) {
+	name C.jstring, server C.jstring, password C.jstring, port C.jint,
+	skipcertverify C.jboolean, sni C.jstring, udp C.jboolean) {
+
+	gname := J2GString(env, name)
 	gdhost := J2GString(env, dhost)
 	gserver := J2GString(env, server)
 	gpassword := J2GString(env, password)
@@ -125,7 +128,7 @@ func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_connectReq(e
 		dstaddr := net.JoinHostPort(gdhost, strconv.Itoa(int(dport)))
 		fmt.Println("connecting begin", hyaddr, dstaddr)
 
-		hd, err := hyPool.TCP(hyaddr, func() (*client.Config, error) {
+		hd, err := hyPool.TCP(gname, func() (*client.Config, error) {
 			hyConfig := &client.Config{}
 			hostPort := net.JoinHostPort(gserver, strconv.Itoa(int(port)))
 			addr, err := net.ResolveUDPAddr("udp", hostPort)
