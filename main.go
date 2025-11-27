@@ -9,7 +9,7 @@ package main
 #cgo darwin LDFLAGS: -framework Security -framework CoreFoundation
 #include <stdio.h>
 #include <stdlib.h>
-#include <com_net_layer4_common_netty_channel_Hysteria2ProxyChannel.h>
+#include <com_net_layer4_common_hyseria2_Hysteria2Channel.h>
 
 static const char* GetJStringUTF(JNIEnv* env, jstring jstr) {
     if (jstr == NULL) return NULL;
@@ -109,8 +109,8 @@ func JNI_OnLoad(vm *C.JavaVM, reserved unsafe.Pointer) C.jint {
 	return C.JNI_VERSION_1_6
 }
 
-//export Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_connectReq
-func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_connectReq(env *C.JNIEnv, obj C.jobject,
+//export Java_com_net_layer4_common_hyseria2_Hysteria2Channel_connectReq
+func Java_com_net_layer4_common_hyseria2_Hysteria2Channel_connectReq(env *C.JNIEnv, obj C.jobject,
 	dhost C.jstring, dport C.jint,
 	name C.jstring, server C.jstring, password C.jstring, port C.jint,
 	skipcertverify C.jboolean, sni C.jstring, udp C.jboolean) {
@@ -158,8 +158,8 @@ func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_connectReq(e
 	fmt.Println("connectReq end", gdhost, dport, gserver, gpassword, port, skipcertverify, gsni, udp)
 }
 
-//export Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_readReq
-func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_readReq(env *C.JNIEnv, obj C.jobject,
+//export Java_com_net_layer4_common_hyseria2_Hysteria2Channel_readReq
+func Java_com_net_layer4_common_hyseria2_Hysteria2Channel_readReq(env *C.JNIEnv, obj C.jobject,
 	addr C.jlong, len C.jint) {
 	jhd := C.GetConnectionID(env, obj)
 	hd := int64(jhd)
@@ -183,8 +183,8 @@ func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_readReq(env 
 	fmt.Println("readReq end", hd)
 }
 
-//export Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_writeReq
-func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_writeReq(env *C.JNIEnv, obj C.jobject,
+//export Java_com_net_layer4_common_hyseria2_Hysteria2Channel_writeReq
+func Java_com_net_layer4_common_hyseria2_Hysteria2Channel_writeReq(env *C.JNIEnv, obj C.jobject,
 	addr C.jlong, len C.jint) {
 	jhd := C.GetConnectionID(env, obj)
 	hd := int64(jhd)
@@ -212,8 +212,8 @@ func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_writeReq(env
 	fmt.Println("writeReq end", hd)
 }
 
-//export Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_closeReq
-func Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_closeReq(env *C.JNIEnv, obj C.jobject) {
+//export Java_com_net_layer4_common_hyseria2_Hysteria2Channel_closeReq
+func Java_com_net_layer4_common_hyseria2_Hysteria2Channel_closeReq(env *C.JNIEnv, obj C.jobject) {
 	jhd := C.GetConnectionID(env, obj)
 	hd := int64(jhd)
 	fmt.Println("closeReq begin", hd)

@@ -29,7 +29,7 @@ typedef struct { const char *p; ptrdiff_t n; } _GoString_;
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <com_net_layer4_common_netty_channel_Hysteria2ProxyChannel.h>
+#include <com_net_layer4_common_hyseria2_Hysteria2Channel.h>
 
 static const char* GetJStringUTF(JNIEnv* env, jstring jstr) {
     if (jstr == NULL) return NULL;
@@ -164,10 +164,10 @@ extern "C" {
 #endif
 
 extern jint JNI_OnLoad(JavaVM* vm, void* reserved);
-extern void Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_connectReq(JNIEnv* env, jobject obj, jstring dhost, jint dport, jstring name, jstring server, jstring password, jint port, jboolean skipcertverify, jstring sni, jboolean udp);
-extern void Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_readReq(JNIEnv* env, jobject obj, jlong addr, jint len);
-extern void Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_writeReq(JNIEnv* env, jobject obj, jlong addr, jint len);
-extern void Java_com_net_layer4_common_netty_channel_Hysteria2ProxyChannel_closeReq(JNIEnv* env, jobject obj);
+extern void Java_com_net_layer4_common_hyseria2_Hysteria2Channel_connectReq(JNIEnv* env, jobject obj, jstring dhost, jint dport, jstring name, jstring server, jstring password, jint port, jboolean skipcertverify, jstring sni, jboolean udp);
+extern void Java_com_net_layer4_common_hyseria2_Hysteria2Channel_readReq(JNIEnv* env, jobject obj, jlong addr, jint len);
+extern void Java_com_net_layer4_common_hyseria2_Hysteria2Channel_writeReq(JNIEnv* env, jobject obj, jlong addr, jint len);
+extern void Java_com_net_layer4_common_hyseria2_Hysteria2Channel_closeReq(JNIEnv* env, jobject obj);
 
 #ifdef __cplusplus
 }
