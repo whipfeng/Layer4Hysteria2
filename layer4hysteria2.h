@@ -163,11 +163,11 @@ typedef struct { void *data; GoInt len; GoInt cap; } GoSlice;
 extern "C" {
 #endif
 
-extern __declspec(dllexport) jint JNI_OnLoad(JavaVM* vm, void* reserved);
-extern __declspec(dllexport) void Java_com_net_layer4_common_hyseria2_Hysteria2Channel_connectReq(JNIEnv* env, jobject obj, jstring dhost, jint dport, jstring name, jstring server, jstring password, jint port, jboolean skipcertverify, jstring sni, jboolean udp);
-extern __declspec(dllexport) void Java_com_net_layer4_common_hyseria2_Hysteria2Channel_readReq(JNIEnv* env, jobject obj, jlong addr, jint len);
-extern __declspec(dllexport) void Java_com_net_layer4_common_hyseria2_Hysteria2Channel_writeReq(JNIEnv* env, jobject obj, jlong addr, jint len);
-extern __declspec(dllexport) void Java_com_net_layer4_common_hyseria2_Hysteria2Channel_closeReq(JNIEnv* env, jobject obj);
+extern jint JNI_OnLoad(JavaVM* vm, void* reserved);
+extern void Java_com_net_layer4_common_hyseria2_Hysteria2Channel_connectReq(JNIEnv* env, jobject obj, jstring dhost, jint dport, jstring name, jstring server, jstring password, jint port, jboolean skipcertverify, jstring sni, jboolean udp);
+extern void Java_com_net_layer4_common_hyseria2_Hysteria2Channel_readReq(JNIEnv* env, jobject obj, jlong addr, jint len);
+extern void Java_com_net_layer4_common_hyseria2_Hysteria2Channel_writeReq(JNIEnv* env, jobject obj, jlong addr, jint len);
+extern void Java_com_net_layer4_common_hyseria2_Hysteria2Channel_closeReq(JNIEnv* env, jobject obj);
 
 #ifdef __cplusplus
 }
