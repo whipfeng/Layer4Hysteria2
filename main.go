@@ -6,6 +6,7 @@ package main
 #cgo CFLAGS: -IC:/Users/AI/.jdks/corretto-1.8.0_462/include
 #cgo CFLAGS: -IC:/Users/AI/.jdks/corretto-1.8.0_462/include/win32
 #cgo CFLAGS: -I../Layer4forwarding/layer4-common/target/generated-jni-headers
+#cgo CFLAGS: -I./generated-jni-headers
 #cgo darwin LDFLAGS: -framework Security -framework CoreFoundation
 #include <stdio.h>
 #include <stdlib.h>
